@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+option csharp_namespace = "Quorum.Protocol";
+
+package quorum;
+
+// Node-to-node traffic. Raft messages travel as opaque bytes (Quorum.Core.Codec), batched on one
+// long-lived stream per peer; snapshots go on a separate stream so they never block heartbeats.
+service RaftTransport {
+  rpc Stream (stream RaftBatch) returns (StreamAck);
+  rpc InstallSnapshot (stream SnapshotChunk) returns (SnapshotAck);
+}
+
+message RaftBatch {
+  uint64 from = 1;
+  repeated bytes messages = 2;
+  // Lets a node that does not know the sender yet (one that is joining) answer it.
+  string from_address = 3;
+}
+
+message StreamAck {}
+
+// The first chunk carries the Raft snapshot message; every chunk carries a slice of the snapshot file.
+message SnapshotChunk {
+  bytes message = 1;
+  bytes data = 2;
+  bool last = 3;
+  uint64 from = 4;
+  string from_address = 5;
+}
+
+message SnapshotAck {
+  bool ok = 1;
+  string error = 2;
+}
+
+// The client API.
+service Kv {
+  rpc Execute (KvRequest) returns (KvResponse);
+}
+
+enum KvOperation {
+  GET = 0;
+  PUT = 1;
+  DELETE = 2;
+  CAS = 3;
+  SCAN = 4;
+}
+
+enum ReadConsistency {
+  // ReadIndex: the leader confirms with a heartbeat round that it is still the leader. Always safe.
+  LINEARIZABLE = 0;
+  // Leader lease: no round trip, but only safe if clocks run at the same rate.
+  LEASE = 1;
+  // Read the local replica, which may be behind.
+  STALE = 2;
+}
+
+message KvRequest {
+  KvOperation op = 1;
+  // Writes with a client id are executed exactly once: retries with the same seq get the original answer.
+  uint64 client_id = 2;
+  uint64 seq = 3;
+  bytes key = 4;
+  bytes value = 5;
+  // For CAS: false means "delete the key if the condition holds".
+  bool has_value = 6;
+  bytes expected = 7;
+  bool expect_absent = 8;
+  ReadConsistency consistency = 9;
+  uint32 limit = 10;
+  // How long the node may wait before answering TIMEOUT, in milliseconds (0 = default).
+  uint32 timeout_ms = 11;
+}
+
+enum KvStatusCode {
+  OK = 0;
+  NOT_FOUND = 1;
+  CAS_FAILED = 2;
+  // This node is not the leader; the request was not executed. leader_id/leader_address may point to it.
+  NOT_LEADER = 3;
+  // The outcome is unknown: the write may or may not have been applied. Retry with the same seq.
+  TIMEOUT = 4;
+  // An older request of a client that has since sent a newer one; it had no effect.
+  STALE_REQUEST = 5;
+  ERROR = 6;
+}
+
+message KvPair {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message KvResponse {
+  KvStatusCode status = 1;
+  bytes value = 2;
+  bool found = 3;
+  uint64 index = 4;
+  uint64 leader_id = 5;
+  string leader_address = 6;
+  string error = 7;
+  repeated KvPair pairs = 8;
+  uint64 node_id = 9;
+  uint64 term = 10;
+}

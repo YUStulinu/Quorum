@@ -1,0 +1,15 @@
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Built on demand by native/build.ps1 / build.sh
+native/bin/
+native/obj/
+
+# Runtime data
+data/
+chaos-results/
+*.tdb
+*.tdb-wal

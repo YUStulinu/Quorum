@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quorum chaos report</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --ink: #1b1f24; --muted: #5d6673; --line: #dfe3e8;
+  --ok: #1f8a4c; --bad: #c9352b; --warn: #b7791f; --accent: #2f5bd3;
+  --leader: #2f5bd3; --follower: #9aa7b8; --candidate: #d08a1a; --down: #c9352b; --fault: rgba(201,53,43,0.10);
+  --read: #2f5bd3; --write: #1f8a4c; --cas: #8a3fc7; --delete: #6b7280;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1216; --panel: #171b21; --ink: #e6e9ee; --muted: #9aa4b2; --line: #2a313b;
+    --ok: #3fbf74; --bad: #ef6b60; --warn: #e2a53b; --accent: #7aa2ff;
+    --leader: #7aa2ff; --follower: #556170; --candidate: #e2a53b; --down: #ef6b60; --fault: rgba(239,107,96,0.13);
+    --read: #7aa2ff; --write: #3fbf74; --cas: #c084fc; --delete: #9aa4b2;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+h2 { font-size: 16px; margin: 28px 0 10px; }
+.sub { color: var(--muted); margin-bottom: 18px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.card .value { font-size: 20px; font-weight: 650; margin-top: 2px; }
+.pass { color: var(--ok); } .fail { color: var(--bad); } .unk { color: var(--warn); }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; overflow-x: auto; }
+svg text { fill: var(--muted); font-size: 11px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+code, .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12.5px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; color: var(--muted); font-size: 12px; margin-top: 8px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.anomaly { border-left: 3px solid var(--bad); }
+.log { max-height: 320px; overflow: auto; white-space: pre-wrap; }
+.tip { position: fixed; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; font-size: 12px; display: none; max-width: 420px; box-shadow: 0 4px 16px rgba(0,0,0,.15); }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<div class="tip" id="tip"></div>
+<script>
+const D = {"name":"20261020-153934-linearizable-clock","seed":7,"nodes":5,"clients":10,"keys":8,"seconds":40,"consistency":"Linearizable","nemesis":["clock"],"linearizable":true,"converged":true,"convergence":"5 replicas at index 8817 with identical data (8 keys, digest 106F9101914BBF35)","electionIssues":[],"total":17649,"ok":17648,"failed":0,"unknown":1,"latency":{"p50":15.6,"p90":22.6,"p99":56.2,"max":2486},"perSecond":[[4,374,0,0,20.41,690.8],[5,476,0,0,20.1,41.18],[6,388,0,0,21.06,169.19],[7,167,0,0,21.1,31.26],[8,183,0,0,17.08,1172.5],[9,346,0,0,17.92,1083.47],[10,444,0,0,18.05,37.88],[11,440,0,0,18.01,61.37],[12,493,0,0,18.6,55.33],[13,525,0,0,18.75,29.45],[14,431,0,0,19.14,94.38],[15,0,0,0,0,0],[16,420,0,0,16.67,1230.73],[17,479,0,0,15.38,51.3],[18,535,0,0,15.04,24.11],[19,564,0,0,14.59,37.28],[20,632,0,0,15.29,36.16],[21,615,0,0,16.13,28.04],[22,297,0,0,15.72,27.97],[23,179,0,0,14.09,1257.39],[24,530,0,0,14.69,47.76],[25,540,0,0,14.64,30.18],[26,562,0,0,14.78,98.96],[27,610,0,0,15.01,58.19],[28,593,0,0,16.37,38.62],[29,642,0,0,15.18,25.7],[30,3,0,0,17.19,21.7],[31,337,0,0,14.08,1217.73],[32,511,0,0,13.48,47.58],[33,556,0,0,14.46,23.99],[34,549,0,0,14.58,35.33],[35,618,0,0,15.28,36.7],[36,632,0,0,15.5,26.36],[37,346,0,0,15.8,24.54],[38,113,0,0,13.81,1241.43],[39,482,0,0,14.65,38.13],[40,541,0,0,14.76,56.27],[41,578,0,0,15.01,101.81],[42,602,0,0,14.97,59.4],[43,307,0,0,16.52,29.31]],"faults":[{"start":6.52,"end":12.38,"kind":"clock","text":"clock skew: node 3 runs at 0.1x, the others faster; node 3 isolated"},{"start":14.89,"end":19.93,"kind":"clock","text":"clock skew: node 2 runs at 0.1x, the others faster; node 2 isolated"},{"start":22.44,"end":27.48,"kind":"clock","text":"clock skew: node 5 runs at 0.1x, the others faster; node 5 isolated"},{"start":29.99,"end":35.03,"kind":"clock","text":"clock skew: node 2 runs at 0.1x, the others faster; node 2 isolated"},{"start":37.54,"end":42.57,"kind":"clock","text":"clock skew: node 3 runs at 0.1x, the others faster; node 3 isolated"}],"keyResults":[{"key":"k0","ops":2231,"verdict":"linearizable","ms":95,"states":3103},{"key":"k1","ops":2169,"verdict":"linearizable","ms":92,"states":2696},{"key":"k2","ops":2166,"verdict":"linearizable","ms":90,"states":2733},{"key":"k3","ops":2325,"verdict":"linearizable","ms":95,"states":3084},{"key":"k4","ops":2194,"verdict":"linearizable","ms":93,"states":2539},{"key":"k5","ops":2247,"verdict":"linearizable","ms":90,"states":2654},{"key":"k6","ops":2155,"verdict":"linearizable","ms":85,"states":2716},{"key":"k7","ops":2162,"verdict":"linearizable","ms":87,"states":2809}],"anomalies":[],"timeline":[{"node":1,"points":[[3.82,"Follower",3],[4.08,"Follower",3],[4.34,"Follower",3],[4.61,"Follower",3],[4.87,"Follower",3],[5.13,"Follower",3],[5.4,"Follower",3],[5.66,"Follower",3],[5.92,"Follower",3],[6.19,"Follower",3],[6.45,"Follower",3],[6.72,"Follower",3],[6.98,"Follower",3],[7.24,"Follower",3],[7.5,"Follower",3],[7.76,"Follower",4],[8.02,"Follower",4],[8.28,"Follower",4],[8.54,"Follower",4],[8.81,"Follower",4],[9.07,"Follower",4],[9.33,"Follower",4],[9.6,"Follower",4],[9.88,"Follower",4],[10.13,"Follower",4],[10.39,"Follower",4],[10.66,"Follower",4],[10.92,"Follower",4],[11.19,"Follower",4],[11.45,"Follower",4],[11.71,"Follower",4],[11.97,"Follower",4],[12.22,"Follower",4],[12.48,"Follower",4],[12.74,"Follower",4],[13.01,"Follower",4],[13.28,"Follower",4],[13.53,"Follower",4],[13.79,"Follower",4],[14.05,"Follower",4],[14.3,"Follower",4],[14.56,"Follower",4],[14.83,"Follower",4],[15.09,"Follower",4],[15.35,"Follower",5],[15.61,"Follower",5],[15.88,"Follower",5],[16.14,"Follower",5],[16.41,"Follower",5],[16.67,"Follower",5],[16.93,"Follower",5],[17.19,"Follower",5],[17.46,"Follower",5],[17.72,"Follower",5],[17.99,"Follower",5],[18.25,"Follower",5],[18.5,"Follower",5],[18.77,"Follower",5],[19.03,"Follower",5],[19.28,"Follower",5],[19.55,"Follower",5],[19.81,"Follower",5],[20.07,"Follower",5],[20.34,"Follower",5],[20.61,"Follower",5],[20.87,"Follower",5],[21.14,"Follower",5],[21.4,"Follower",5],[21.66,"Follower",5],[21.92,"Follower",5],[22.18,"Follower",5],[22.45,"Follower",5],[22.71,"PreCandidate",5],[22.97,"Follower",6],[23.23,"Follower",6],[23.49,"Follower",6],[23.75,"Follower",6],[24,"Follower",6],[24.26,"Follower",6],[24.52,"Follower",6],[24.78,"Follower",6],[25.05,"Follower",6],[25.31,"Follower",6],[25.57,"Follower",6],[25.83,"Follower",6],[26.1,"Follower",6],[26.35,"Follower",6],[26.62,"Follower",6],[26.88,"Follower",6],[27.14,"Follower",6],[27.41,"Follower",6],[27.67,"Follower",6],[27.93,"Follower",6],[28.19,"Follower",6],[28.45,"Follower",6],[28.71,"Follower",6],[28.97,"Follower",6],[29.23,"Follower",6],[29.49,"Follower",6],[29.75,"Follower",6],[30.01,"Follower",6],[30.28,"Candidate",7],[30.54,"Follower",8],[30.8,"Follower",8],[31.06,"Follower",8],[31.32,"Follower",8],[31.59,"Follower",8],[31.85,"Follower",8],[32.12,"Follower",8],[32.38,"Follower",8],[32.64,"Follower",8],[32.91,"Follower",8],[33.17,"Follower",8],[33.43,"Follower",8],[33.69,"Follower",8],[33.94,"Follower",8],[34.2,"Follower",8],[34.46,"Follower",8],[34.73,"Follower",8],[34.99,"Follower",8],[35.25,"Follower",8],[35.52,"Follower",8],[35.78,"Follower",8],[36.04,"Follower",8],[36.31,"Follower",8],[36.57,"Follower",8],[36.83,"Follower",8],[37.09,"Follower",8],[37.35,"Follower",8],[37.61,"Follower",8],[37.88,"Follower",9],[38.13,"Follower",9],[38.4,"Follower",9],[38.66,"Follower",9],[38.92,"Follower",9],[39.18,"Follower",9],[39.44,"Follower",9],[39.7,"Follower",9],[39.97,"Follower",9],[40.23,"Follower",9],[40.49,"Follower",9],[40.75,"Follower",9],[41.01,"Follower",9],[41.27,"Follower",9],[41.54,"Follower",9],[41.8,"Follower",9],[42.07,"Follower",9],[42.32,"Follower",9],[42.58,"Follower",9],[42.83,"Follower",9],[43.09,"Follower",9],[43.35,"Follower",9]]},{"node":2,"points":[[3.82,"Follower",3],[4.08,"Follower",3],[4.34,"Follower",3],[4.61,"Follower",3],[4.87,"Follower",3],[5.13,"Follower",3],[5.4,"Follower",3],[5.66,"Follower",3],[5.92,"Follower",3],[6.19,"Follower",3],[6.45,"Follower",3],[6.72,"Follower",3],[6.98,"Follower",3],[7.24,"Follower",3],[7.5,"Follower",3],[7.76,"Leader",4],[8.02,"Leader",4],[8.28,"Leader",4],[8.54,"Leader",4],[8.81,"Leader",4],[9.07,"Leader",4],[9.33,"Leader",4],[9.6,"Leader",4],[9.88,"Leader",4],[10.13,"Leader",4],[10.39,"Leader",4],[10.66,"Leader",4],[10.92,"Leader",4],[11.19,"Leader",4],[11.45,"Leader",4],[11.71,"Leader",4],[11.97,"Leader",4],[12.22,"Leader",4],[12.48,"Leader",4],[12.74,"Leader",4],[13.01,"Leader",4],[13.28,"Leader",4],[13.53,"Leader",4],[13.79,"Leader",4],[14.05,"Leader",4],[14.3,"Leader",4],[14.56,"Leader",4],[14.83,"Leader",4],[15.09,"Leader",4],[15.35,"Leader",4],[15.61,"Leader",4],[15.88,"Leader",4],[16.14,"Leader",4],[16.41,"Leader",4],[16.67,"Leader",4],[16.93,"Leader",4],[17.19,"Leader",4],[17.46,"Leader",4],[17.72,"Leader",4],[17.99,"Leader",4],[18.25,"Leader",4],[18.5,"Leader",4],[18.77,"Leader",4],[19.03,"Leader",4],[19.28,"Leader",4],[19.55,"Leader",4],[19.81,"Follower",4],[20.07,"Follower",5],[20.34,"Follower",5],[20.61,"Follower",5],[20.87,"Follower",5],[21.14,"Follower",5],[21.4,"Follower",5],[21.66,"Follower",5],[21.92,"Follower",5],[22.18,"Follower",5],[22.45,"Follower",5],[22.71,"Follower",5],[22.97,"Leader",6],[23.23,"Leader",6],[23.49,"Leader",6],[23.75,"Leader",6],[24,"Leader",6],[24.26,"Leader",6],[24.52,"Leader",6],[24.78,"Leader",6],[25.05,"Leader",6],[25.31,"Leader",6],[25.57,"Leader",6],[25.83,"Leader",6],[26.1,"Leader",6],[26.35,"Leader",6],[26.62,"Leader",6],[26.88,"Leader",6],[27.14,"Leader",6],[27.41,"Leader",6],[27.67,"Leader",6],[27.93,"Leader",6],[28.19,"Leader",6],[28.45,"Leader",6],[28.71,"Leader",6],[28.97,"Leader",6],[29.23,"Leader",6],[29.49,"Leader",6],[29.75,"Leader",6],[30.01,"Leader",6],[30.28,"Leader",6],[30.54,"Leader",6],[30.8,"Leader",6],[31.06,"Leader",6],[31.32,"Leader",6],[31.59,"Leader",6],[31.85,"Leader",6],[32.12,"Leader",6],[32.38,"Leader",6],[32.64,"Leader",6],[32.91,"Leader",6],[33.17,"Leader",6],[33.43,"Leader",6],[33.69,"Leader",6],[33.94,"Leader",6],[34.2,"Leader",6],[34.46,"Leader",6],[34.73,"Leader",6],[34.99,"Leader",6],[35.25,"Follower",8],[35.52,"Follower",8],[35.78,"Follower",8],[36.04,"Follower",8],[36.31,"Follower",8],[36.57,"Follower",8],[36.83,"Follower",8],[37.09,"Follower",8],[37.35,"Follower",8],[37.61,"Follower",8],[37.88,"Follower",9],[38.13,"Follower",9],[38.4,"Follower",9],[38.66,"Follower",9],[38.92,"Follower",9],[39.18,"Follower",9],[39.44,"Follower",9],[39.7,"Follower",9],[39.97,"Follower",9],[40.23,"Follower",9],[40.49,"Follower",9],[40.75,"Follower",9],[41.01,"Follower",9],[41.27,"Follower",9],[41.54,"Follower",9],[41.8,"Follower",9],[42.07,"Follower",9],[42.32,"Follower",9],[42.58,"Follower",9],[42.83,"Follower",9],[43.09,"Follower",9],[43.35,"Follower",9]]},{"node":3,"points":[[3.82,"Leader",3],[4.08,"Leader",3],[4.34,"Leader",3],[4.61,"Leader",3],[4.87,"Leader",3],[5.13,"Leader",3],[5.4,"Leader",3],[5.66,"Leader",3],[5.92,"Leader",3],[6.19,"Leader",3],[6.45,"Leader",3],[6.72,"Leader",3],[6.98,"Leader",3],[7.24,"Leader",3],[7.5,"Leader",3],[7.76,"Leader",3],[8.02,"Leader",3],[8.28,"Leader",3],[8.54,"Leader",3],[8.81,"Leader",3],[9.07,"Leader",3],[9.33,"Leader",3],[9.6,"Leader",3],[9.88,"Leader",3],[10.13,"Leader",3],[10.39,"Leader",3],[10.66,"Leader",3],[10.92,"Leader",3],[11.19,"Leader",3],[11.45,"Leader",3],[11.71,"Follower",3],[11.97,"Follower",3],[12.22,"Follower",3],[12.48,"Follower",4],[12.74,"Follower",4],[13.01,"Follower",4],[13.28,"Follower",4],[13.53,"Follower",4],[13.79,"Follower",4],[14.05,"Follower",4],[14.3,"Follower",4],[14.56,"Follower",4],[14.83,"Follower",4],[15.09,"Follower",4],[15.35,"Follower",5],[15.61,"Follower",5],[15.88,"Follower",5],[16.14,"Follower",5],[16.41,"Follower",5],[16.67,"Follower",5],[16.93,"Follower",5],[17.19,"Follower",5],[17.46,"Follower",5],[17.72,"Follower",5],[17.99,"Follower",5],[18.25,"Follower",5],[18.5,"Follower",5],[18.77,"Follower",5],[19.03,"Follower",5],[19.28,"Follower",5],[19.55,"Follower",5],[19.81,"Follower",5],[20.07,"Follower",5],[20.34,"Follower",5],[20.61,"Follower",5],[20.87,"Follower",5],[21.14,"Follower",5],[21.4,"Follower",5],[21.66,"Follower",5],[21.92,"Follower",5],[22.18,"Follower",5],[22.45,"Follower",5],[22.71,"Follower",5],[22.97,"Follower",6],[23.23,"Follower",6],[23.49,"Follower",6],[23.75,"Follower",6],[24,"Follower",6],[24.26,"Follower",6],[24.52,"Follower",6],[24.78,"Follower",6],[25.05,"Follower",6],[25.31,"Follower",6],[25.57,"Follower",6],[25.83,"Follower",6],[26.1,"Follower",6],[26.35,"Follower",6],[26.62,"Follower",6],[26.88,"Follower",6],[27.14,"Follower",6],[27.41,"Follower",6],[27.67,"Follower",6],[27.93,"Follower",6],[28.19,"Follower",6],[28.45,"Follower",6],[28.71,"Follower",6],[28.97,"Follower",6],[29.23,"Follower",6],[29.49,"Follower",6],[29.75,"Follower",6],[30.01,"Follower",6],[30.28,"Follower",7],[30.54,"Leader",8],[30.8,"Leader",8],[31.06,"Leader",8],[31.32,"Leader",8],[31.59,"Leader",8],[31.85,"Leader",8],[32.12,"Leader",8],[32.38,"Leader",8],[32.64,"Leader",8],[32.91,"Leader",8],[33.17,"Leader",8],[33.43,"Leader",8],[33.69,"Leader",8],[33.94,"Leader",8],[34.2,"Leader",8],[34.46,"Leader",8],[34.73,"Leader",8],[34.99,"Leader",8],[35.25,"Leader",8],[35.52,"Leader",8],[35.78,"Leader",8],[36.04,"Leader",8],[36.31,"Leader",8],[36.57,"Leader",8],[36.83,"Leader",8],[37.09,"Leader",8],[37.35,"Leader",8],[37.61,"Leader",8],[37.88,"Leader",8],[38.13,"Leader",8],[38.4,"Leader",8],[38.66,"Leader",8],[38.92,"Leader",8],[39.18,"Leader",8],[39.44,"Leader",8],[39.7,"Leader",8],[39.97,"Leader",8],[40.23,"Leader",8],[40.49,"Leader",8],[40.75,"Follower",8],[41.01,"Follower",8],[41.27,"Follower",8],[41.54,"Follower",8],[41.8,"Follower",8],[42.07,"Follower",8],[42.32,"Follower",8],[42.58,"Follower",8],[42.83,"Follower",9],[43.09,"Follower",9],[43.35,"Follower",9]]},{"node":4,"points":[[3.82,"Follower",3],[4.08,"Follower",3],[4.34,"Follower",3],[4.61,"Follower",3],[4.87,"Follower",3],[5.13,"Follower",3],[5.4,"Follower",3],[5.66,"Follower",3],[5.92,"Follower",3],[6.19,"Follower",3],[6.45,"Follower",3],[6.72,"Follower",3],[6.98,"Follower",3],[7.24,"Follower",3],[7.5,"Follower",3],[7.76,"Follower",4],[8.02,"Follower",4],[8.28,"Follower",4],[8.54,"Follower",4],[8.81,"Follower",4],[9.07,"Follower",4],[9.33,"Follower",4],[9.6,"Follower",4],[9.88,"Follower",4],[10.13,"Follower",4],[10.39,"Follower",4],[10.66,"Follower",4],[10.92,"Follower",4],[11.19,"Follower",4],[11.45,"Follower",4],[11.71,"Follower",4],[11.97,"Follower",4],[12.22,"Follower",4],[12.48,"Follower",4],[12.74,"Follower",4],[13.01,"Follower",4],[13.28,"Follower",4],[13.53,"Follower",4],[13.79,"Follower",4],[14.05,"Follower",4],[14.3,"Follower",4],[14.56,"Follower",4],[14.83,"Follower",4],[15.09,"Follower",4],[15.35,"Follower",5],[15.61,"Follower",5],[15.88,"Follower",5],[16.14,"Follower",5],[16.41,"Follower",5],[16.67,"Follower",5],[16.93,"Follower",5],[17.19,"Follower",5],[17.46,"Follower",5],[17.72,"Follower",5],[17.99,"Follower",5],[18.25,"Follower",5],[18.5,"Follower",5],[18.77,"Follower",5],[19.03,"Follower",5],[19.28,"Follower",5],[19.55,"Follower",5],[19.81,"Follower",5],[20.07,"Follower",5],[20.34,"Follower",5],[20.61,"Follower",5],[20.87,"Follower",5],[21.14,"Follower",5],[21.4,"Follower",5],[21.66,"Follower",5],[21.92,"Follower",5],[22.18,"Follower",5],[22.45,"Follower",5],[22.71,"Follower",5],[22.97,"Follower",6],[23.23,"Follower",6],[23.49,"Follower",6],[23.75,"Follower",6],[24,"Follower",6],[24.26,"Follower",6],[24.52,"Follower",6],[24.78,"Follower",6],[25.05,"Follower",6],[25.31,"Follower",6],[25.57,"Follower",6],[25.83,"Follower",6],[26.1,"Follower",6],[26.35,"Follower",6],[26.62,"Follower",6],[26.88,"Follower",6],[27.14,"Follower",6],[27.41,"Follower",6],[27.67,"Follower",6],[27.93,"Follower",6],[28.19,"Follower",6],[28.45,"Follower",6],[28.71,"Follower",6],[28.97,"Follower",6],[29.23,"Follower",6],[29.49,"Follower",6],[29.75,"Follower",6],[30.01,"Follower",6],[30.28,"Candidate",7],[30.54,"Follower",8],[30.8,"Follower",8],[31.06,"Follower",8],[31.32,"Follower",8],[31.59,"Follower",8],[31.85,"Follower",8],[32.12,"Follower",8],[32.38,"Follower",8],[32.64,"Follower",8],[32.91,"Follower",8],[33.17,"Follower",8],[33.43,"Follower",8],[33.69,"Follower",8],[33.94,"Follower",8],[34.2,"Follower",8],[34.46,"Follower",8],[34.73,"Follower",8],[34.99,"Follower",8],[35.25,"Follower",8],[35.52,"Follower",8],[35.78,"Follower",8],[36.04,"Follower",8],[36.31,"Follower",8],[36.57,"Follower",8],[36.83,"Follower",8],[37.09,"Follower",8],[37.35,"Follower",8],[37.61,"Follower",8],[37.88,"Leader",9],[38.13,"Leader",9],[38.4,"Leader",9],[38.66,"Leader",9],[38.92,"Leader",9],[39.18,"Leader",9],[39.44,"Leader",9],[39.7,"Leader",9],[39.97,"Leader",9],[40.23,"Leader",9],[40.49,"Leader",9],[40.75,"Leader",9],[41.01,"Leader",9],[41.27,"Leader",9],[41.54,"Leader",9],[41.8,"Leader",9],[42.07,"Leader",9],[42.32,"Leader",9],[42.58,"Leader",9],[42.83,"Leader",9],[43.09,"Leader",9],[43.35,"Leader",9]]},{"node":5,"points":[[3.82,"Follower",3],[4.08,"Follower",3],[4.34,"Follower",3],[4.61,"Follower",3],[4.87,"Follower",3],[5.13,"Follower",3],[5.4,"Follower",3],[5.66,"Follower",3],[5.92,"Follower",3],[6.19,"Follower",3],[6.45,"Follower",3],[6.72,"Follower",3],[6.98,"Follower",3],[7.24,"Follower",3],[7.5,"Follower",3],[7.76,"Follower",4],[8.02,"Follower",4],[8.28,"Follower",4],[8.54,"Follower",4],[8.81,"Follower",4],[9.07,"Follower",4],[9.33,"Follower",4],[9.6,"Follower",4],[9.88,"Follower",4],[10.13,"Follower",4],[10.39,"Follower",4],[10.66,"Follower",4],[10.92,"Follower",4],[11.19,"Follower",4],[11.45,"Follower",4],[11.71,"Follower",4],[11.97,"Follower",4],[12.22,"Follower",4],[12.48,"Follower",4],[12.74,"Follower",4],[13.01,"Follower",4],[13.28,"Follower",4],[13.53,"Follower",4],[13.79,"Follower",4],[14.05,"Follower",4],[14.3,"Follower",4],[14.56,"Follower",4],[14.83,"Follower",4],[15.09,"Follower",4],[15.35,"Leader",5],[15.61,"Leader",5],[15.88,"Leader",5],[16.14,"Leader",5],[16.41,"Leader",5],[16.67,"Leader",5],[16.93,"Leader",5],[17.19,"Leader",5],[17.46,"Leader",5],[17.72,"Leader",5],[17.99,"Leader",5],[18.25,"Leader",5],[18.5,"Leader",5],[18.77,"Leader",5],[19.03,"Leader",5],[19.28,"Leader",5],[19.55,"Leader",5],[19.81,"Leader",5],[20.07,"Leader",5],[20.34,"Leader",5],[20.61,"Leader",5],[20.87,"Leader",5],[21.14,"Leader",5],[21.4,"Leader",5],[21.66,"Leader",5],[21.92,"Leader",5],[22.18,"Leader",5],[22.45,"Leader",5],[22.71,"Leader",5],[22.97,"Leader",5],[23.23,"Leader",5],[23.49,"Leader",5],[23.75,"Leader",5],[24,"Leader",5],[24.26,"Leader",5],[24.52,"Leader",5],[24.78,"Leader",5],[25.05,"Leader",5],[25.31,"Leader",5],[25.57,"Leader",5],[25.83,"Leader",5],[26.1,"Leader",5],[26.35,"Leader",5],[26.62,"Follower",5],[26.88,"Follower",5],[27.14,"Follower",5],[27.41,"Follower",5],[27.67,"Follower",6],[27.93,"Follower",6],[28.19,"Follower",6],[28.45,"Follower",6],[28.71,"Follower",6],[28.97,"Follower",6],[29.23,"Follower",6],[29.49,"Follower",6],[29.75,"Follower",6],[30.01,"Follower",6],[30.28,"Follower",6],[30.54,"Follower",8],[30.8,"Follower",8],[31.06,"Follower",8],[31.32,"Follower",8],[31.59,"Follower",8],[31.85,"Follower",8],[32.12,"Follower",8],[32.38,"Follower",8],[32.64,"Follower",8],[32.91,"Follower",8],[33.17,"Follower",8],[33.43,"Follower",8],[33.69,"Follower",8],[33.94,"Follower",8],[34.2,"Follower",8],[34.46,"Follower",8],[34.73,"Follower",8],[34.99,"Follower",8],[35.25,"Follower",8],[35.52,"Follower",8],[35.78,"Follower",8],[36.04,"Follower",8],[36.31,"Follower",8],[36.57,"Follower",8],[36.83,"Follower",8],[37.09,"Follower",8],[37.35,"Follower",8],[37.61,"Follower",8],[37.88,"Follower",8],[38.13,"Follower",9],[38.4,"Follower",9],[38.66,"Follower",9],[38.92,"Follower",9],[39.18,"Follower",9],[39.44,"Follower",9],[39.7,"Follower",9],[39.97,"Follower",9],[40.23,"Follower",9],[40.49,"Follower",9],[40.75,"Follower",9],[41.01,"Follower",9],[41.27,"Follower",9],[41.54,"Follower",9],[41.8,"Follower",9],[42.07,"Follower",9],[42.32,"Follower",9],[42.58,"Follower",9],[42.83,"Follower",9],[43.09,"Follower",9],[43.35,"Follower",9]]}],"log":["[   0.0s] starting 5 nodes","[   3.5s] leader elected: node 3","[   6.5s] nemesis: clock skew: node 3 runs at 0.1x, the others faster; node 3 isolated","[  12.4s] nemesis: healed","[  14.9s] nemesis: clock skew: node 2 runs at 0.1x, the others faster; node 2 isolated","[  19.9s] nemesis: healed","[  22.4s] nemesis: clock skew: node 5 runs at 0.1x, the others faster; node 5 isolated","[  27.5s] nemesis: healed","[  30.0s] nemesis: clock skew: node 2 runs at 0.1x, the others faster; node 2 isolated","[  35.0s] nemesis: healed","[  37.5s] nemesis: clock skew: node 3 runs at 0.1x, the others faster; node 3 isolated","[  42.6s] nemesis: healed","[  43.6s] workload done; healing the cluster","[  43.6s] leader after healing: node 4","[  44.0s] convergence: 5 replicas at index 8817 with identical data (8 keys, digest 106F9101914BBF35)"]};
+const $ = (h) => { const t = document.createElement('template'); t.innerHTML = h.trim(); return t.content.firstChild; };
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const tip = document.getElementById('tip');
+function showTip(e, html) { tip.innerHTML = html; tip.style.display = 'block'; tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; }
+function hideTip() { tip.style.display = 'none'; }
+
+const app = document.getElementById('app');
+const verdict = (v) => v === true ? '<span class="pass">PASS</span>' : v === false ? '<span class="fail">FAIL</span>' : '<span class="unk">UNKNOWN</span>';
+const elections = D.electionIssues.length === 0;
+app.append($(`<div><h1>Quorum chaos report</h1>
+<div class="sub">${esc(D.name)} · seed ${D.seed} · ${D.nodes} nodes · ${D.clients} clients · ${D.keys} keys · ${D.seconds} s · reads: ${esc(D.consistency)} · nemesis: ${esc(D.nemesis.join(', ') || 'none')}</div></div>`));
+app.append($(`<div class="cards">
+  <div class="card"><div class="label">Linearizable</div><div class="value">${verdict(D.linearizable)}</div></div>
+  <div class="card"><div class="label">Replicas converged</div><div class="value">${verdict(D.converged)}</div></div>
+  <div class="card"><div class="label">Election safety</div><div class="value">${verdict(elections)}</div></div>
+  <div class="card"><div class="label">Operations</div><div class="value">${D.total.toLocaleString()}</div><div class="sub" style="margin:0">${D.ok.toLocaleString()} ok · ${D.failed} failed · ${D.unknown} unknown</div></div>
+  <div class="card"><div class="label">Latency p50 / p99</div><div class="value">${D.latency.p50} / ${D.latency.p99} ms</div><div class="sub" style="margin:0">max ${D.latency.max} ms</div></div>
+  <div class="card"><div class="label">Faults injected</div><div class="value">${D.faults.length}</div></div>
+</div>`));
+
+// ---------------------------------------------------------------- timeline
+const T = Math.max(D.seconds + 5, ...D.perSecond.map(p => p[0] + 1), ...D.timeline.flatMap(n => n.points.map(p => p[0])));
+function timeline() {
+  const W = 1140, left = 56, right = 12, plotW = W - left - right;
+  const H1 = 150, laneH = 16, lanes = D.timeline.length, top2 = H1 + 34, H = top2 + lanes * (laneH + 6) + 26;
+  const x = (t) => left + (t / T) * plotW;
+  const maxOps = Math.max(1, ...D.perSecond.map(p => p[1] + p[2] + p[3]));
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:720px">`;
+  for (const f of D.faults) {
+    s += `<rect x="${x(f.start)}" y="0" width="${Math.max(2, x(f.end) - x(f.start))}" height="${H - 20}" fill="${css('--fault')}" data-tip="${esc(f.text)}"/>`;
+  }
+  for (const p of D.perSecond) {
+    const [sec, ok, failed, unknown] = p;
+    const bw = Math.max(1, plotW / T - 1);
+    let y = H1;
+    const seg = (v, color) => { if (!v) return ''; const h = v / maxOps * (H1 - 10); y -= h; return `<rect x="${x(sec)}" y="${y}" width="${bw}" height="${h}" fill="${color}"/>`; };
+    s += `<g data-tip="${sec}s: ${ok} ok, ${failed} failed, ${unknown} unknown · p50 ${p[4]} ms, p99 ${p[5]} ms">` + seg(ok, css('--ok')) + seg(failed, css('--bad')) + seg(unknown, css('--warn')) + `</g>`;
+  }
+  s += `<text x="${left - 8}" y="14" text-anchor="end">${maxOps}</text><text x="${left - 8}" y="${H1}" text-anchor="end">0</text>`;
+  s += `<text x="4" y="${H1 / 2}">ops/s</text>`;
+  const roleColor = { Leader: css('--leader'), Follower: css('--follower'), Candidate: css('--candidate'), PreCandidate: css('--candidate'), Down: css('--down'), Removed: 'transparent' };
+  D.timeline.forEach((n, i) => {
+    const y = top2 + i * (laneH + 6);
+    s += `<text x="${left - 8}" y="${y + 12}" text-anchor="end">node ${n.node}</text>`;
+    for (let j = 0; j < n.points.length; j++) {
+      const [t, role, term] = n.points[j];
+      const t2 = j + 1 < n.points.length ? n.points[j + 1][0] : t + 0.25;
+      s += `<rect x="${x(t)}" y="${y}" width="${Math.max(1, x(t2) - x(t))}" height="${laneH}" fill="${roleColor[role] || css('--follower')}" data-tip="node ${n.node} at ${t}s: ${role}${term ? ' (term ' + term + ')' : ''}"/>`;
+    }
+  });
+  for (let t = 0; t <= T; t += T > 120 ? 20 : 10) s += `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${t}s</text>`;
+  s += `</svg>`;
+  return s;
+}
+app.append($(`<div><h2>Timeline</h2><div class="panel">${timeline()}
+<div class="legend"><span><i class="sw" style="background:var(--ok)"></i>ok</span><span><i class="sw" style="background:var(--bad)"></i>failed</span><span><i class="sw" style="background:var(--warn)"></i>unknown outcome</span><span><i class="sw" style="background:var(--fault)"></i>fault active</span><span><i class="sw" style="background:var(--leader)"></i>leader</span><span><i class="sw" style="background:var(--follower)"></i>follower</span><span><i class="sw" style="background:var(--candidate)"></i>candidate</span><span><i class="sw" style="background:var(--down)"></i>down</span></div></div></div>`));
+
+// ---------------------------------------------------------------- faults
+if (D.faults.length) {
+  app.append($(`<div><h2>Faults</h2><div class="panel"><table><tr><th>from</th><th>to</th><th>fault</th></tr>${D.faults.map(f => `<tr><td>${f.start.toFixed(1)}s</td><td>${f.end.toFixed(1)}s</td><td>${esc(f.text)}</td></tr>`).join('')}</table></div></div>`));
+}
+
+// ---------------------------------------------------------------- keys
+app.append($(`<div><h2>Linearizability per key</h2><div class="panel"><table><tr><th>key</th><th>operations</th><th>verdict</th><th>search</th></tr>${D.keyResults.map(k => `<tr><td class="mono">${esc(k.key)}</td><td>${k.ops}</td><td class="${k.verdict === 'linearizable' ? 'pass' : k.verdict === 'unknown' ? 'unk' : 'fail'}">${k.verdict}</td><td>${k.ms} ms · ${k.states.toLocaleString()} states</td></tr>`).join('')}</table>
+<div class="sub" style="margin:8px 0 0">${esc(D.convergence)}${D.electionIssues.length ? ' · ' + esc(D.electionIssues.join('; ')) : ''}</div></div></div>`));
+
+// ---------------------------------------------------------------- anomalies
+function swimlanes(a) {
+  const ops = a.ops; if (!ops.length) return '';
+  const clients = [...new Set(ops.map(o => o.client))].sort((p, q) => p - q);
+  const t0 = Math.min(...ops.map(o => o.call));
+  const t1 = Math.max(...ops.map(o => o.ret < 0 ? o.call + 0.05 : o.ret));
+  const W = 1140, left = 70, plotW = W - left - 12, rowH = 18, H = clients.length * (rowH + 4) + 30;
+  const x = (t) => left + ((t - t0) / Math.max(1e-6, t1 - t0)) * plotW;
+  const color = { Read: css('--read'), Write: css('--write'), Cas: css('--cas'), Delete: css('--delete') };
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:720px">`;
+  clients.forEach((c, i) => { s += `<text x="${left - 8}" y="${i * (rowH + 4) + 13}" text-anchor="end">client ${c < 0 ? 'final' : c}</text>`; });
+  for (const o of ops) {
+    const row = clients.indexOf(o.client);
+    const y = row * (rowH + 4);
+    const end = o.ret < 0 ? x(t1) : x(o.ret);
+    const w = Math.max(3, end - x(o.call));
+    s += `<rect x="${x(o.call)}" y="${y}" width="${w}" height="${rowH}" rx="3" fill="${color[o.kind]}" fill-opacity="${o.ordered ? 0.35 : 0.85}" stroke="${o.stuck ? css('--bad') : 'none'}" stroke-width="${o.stuck ? 2.5 : 0}" ${o.unknown ? 'stroke-dasharray="4 3"' : ''} data-tip="${esc(o.text)}<br>${o.call.toFixed(4)}s → ${o.ret < 0 ? 'unknown' : o.ret.toFixed(4) + 's'} · node ${o.node}${o.stuck ? '<br><b>could not be linearized</b>' : ''}"/>`;
+  }
+  s += `<text x="${left}" y="${H - 6}">${t0.toFixed(3)}s</text><text x="${W - 12}" y="${H - 6}" text-anchor="end">${t1.toFixed(3)}s</text></svg>`;
+  return s;
+}
+for (const a of D.anomalies) {
+  app.append($(`<div><h2>Anomaly on key <code>${esc(a.key)}</code></h2><div class="panel anomaly">
+${a.explanations.map(e => `<p><b>In plain words:</b> ${esc(e)}</p>`).join('')}
+<p>The checker linearized ${a.bestOrderLength} of ${a.operations} operations on this key in a valid order, then got stuck: none of the operations below can come next without contradicting a result some client saw.</p>
+<p><b>Could not be placed:</b></p><ul class="mono">${a.stuck.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+<p><b>Last operations of the longest valid order:</b></p><ol class="mono">${a.lastOrdered.map(t => `<li>${esc(t)}</li>`).join('')}</ol>
+${swimlanes(a)}
+<div class="legend"><span><i class="sw" style="background:var(--read)"></i>read</span><span><i class="sw" style="background:var(--write)"></i>write</span><span><i class="sw" style="background:var(--cas)"></i>cas</span><span>faded: in the valid order · red outline: stuck · dashed: unknown outcome</span></div>
+</div></div>`));
+}
+
+// ---------------------------------------------------------------- log
+app.append($(`<div><h2>Run log</h2><div class="panel log mono">${D.log.map(esc).join('\n')}</div></div>`));
+
+document.addEventListener('mousemove', (e) => {
+  const t = e.target.closest('[data-tip]');
+  if (t) showTip(e, t.getAttribute('data-tip')); else hideTip();
+});
+</script>
+</body>
+</html>

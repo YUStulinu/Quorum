@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <TesseraNativeDir>$(MSBuildThisFileDirectory)..\..\native\bin\</TesseraNativeDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Quorum.Core\Quorum.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Builds the Tessera C library on first use (Windows: MSVC through native/build.ps1, elsewhere: native/build.sh)
+    and copies it next to every program that references this project.
+  -->
+  <Target Name="BuildTesseraNative" BeforeTargets="AssignTargetPaths">
+    <Exec Condition="'$(OS)' == 'Windows_NT' And !Exists('$(TesseraNativeDir)tessera.dll')"
+          Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\native\build.ps1&quot;" />
+    <Exec Condition="'$(OS)' != 'Windows_NT' And !Exists('$(TesseraNativeDir)libtessera.so') And !Exists('$(TesseraNativeDir)libtessera.dylib')"
+          Command="sh &quot;$(MSBuildThisFileDirectory)../../native/build.sh&quot;" />
+    <ItemGroup>
+      <TesseraNative Include="$(TesseraNativeDir)tessera.dll" Condition="Exists('$(TesseraNativeDir)tessera.dll')" />
+      <TesseraNative Include="$(TesseraNativeDir)libtessera.so" Condition="Exists('$(TesseraNativeDir)libtessera.so')" />
+      <TesseraNative Include="$(TesseraNativeDir)libtessera.dylib" Condition="Exists('$(TesseraNativeDir)libtessera.dylib')" />
+      <None Include="@(TesseraNative)" CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

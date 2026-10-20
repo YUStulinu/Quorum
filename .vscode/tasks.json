@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/Quorum.sln", "-nologo", "/property:GenerateFullPaths=true", "/consoleloggerparameters:NoSummary"],
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test: all",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/Quorum.sln", "-nologo"],
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test: Raft simulation only",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["test", "${workspaceFolder}/tests/Quorum.Core.Tests", "-nologo"],
+      "group": "test",
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "native: rebuild Tessera",
+      "type": "process",
+      "command": "powershell",
+      "args": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${workspaceFolder}/native/build.ps1", "-Force"],
+      "problemMatcher": []
+    },
+    {
+      "label": "build: release",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["build", "${workspaceFolder}/src/Quorum.Cli", "-c", "Release", "-nologo"],
+      "problemMatcher": "$msCompile"
+    }
+  ]
+}

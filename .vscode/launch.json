@@ -1,0 +1,66 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Cluster + dashboard (3 nodes)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Quorum.Cli/bin/Debug/net9.0/quorum.dll",
+      "args": ["cluster", "--nodes", "3", "--clean"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "Cluster + dashboard (5 nodes)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Quorum.Cli/bin/Debug/net9.0/quorum.dll",
+      "args": ["cluster", "--nodes", "5", "--clean"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Chaos test: all faults, 60 s (should PASS)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Quorum.Cli/bin/Debug/net9.0/quorum.dll",
+      "args": ["chaos", "--nodes", "5", "--time", "60", "--nemesis", "all"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Chaos test: lease reads + clock skew (should FAIL)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Quorum.Cli/bin/Debug/net9.0/quorum.dll",
+      "args": ["chaos", "--nodes", "5", "--time", "40", "--interval", "5", "--read", "lease", "--nemesis", "clock", "--seed", "7"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Benchmark (3 nodes, release)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build: release",
+      "program": "${workspaceFolder}/src/Quorum.Cli/bin/Release/net9.0/quorum.dll",
+      "args": ["bench", "--nodes", "3", "--clients", "256", "--time", "10"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Single node (debug the Raft loop)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/Quorum.Cli/bin/Debug/net9.0/quorum.dll",
+      "args": ["node", "--id", "1", "--data", "data/debug-node-1", "--peers", "1=http://127.0.0.1:7101"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    }
+  ]
+}

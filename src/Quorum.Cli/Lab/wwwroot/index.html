@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quorum cluster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..125,400..800&display=swap">
+<style>
+:root {
+  --paper: #eaeef3;
+  --sheet: #f7f9fb;
+  --ink: #1c2a4a;
+  --ink-soft: #55627d;
+  --rule: #c9d1dd;
+  --leader: #d9900f;
+  --follower: #4d6491;
+  --candidate: #8a6fd1;
+  --fault: #c2185b;
+  --ok: #1e8a5a;
+  --hatch: #d6dce6;
+  --focus: #2b62d9;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0d1528;
+    --sheet: #131d35;
+    --ink: #dbe3f2;
+    --ink-soft: #8d9bb8;
+    --rule: #26324f;
+    --leader: #f2ad35;
+    --follower: #7d96c8;
+    --candidate: #ab95f0;
+    --fault: #f0508a;
+    --ok: #3fc48a;
+    --hatch: #1d2944;
+    --focus: #7aa2ff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0d1528; --sheet: #131d35; --ink: #dbe3f2; --ink-soft: #8d9bb8; --rule: #26324f;
+  --leader: #f2ad35; --follower: #7d96c8; --candidate: #ab95f0; --fault: #f0508a; --ok: #3fc48a; --hatch: #1d2944; --focus: #7aa2ff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: "Archivo", "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+.top {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  padding: 22px 28px 16px; border-bottom: 1px solid var(--rule);
+}
+.brand { font-stretch: 125%; font-weight: 800; font-size: 30px; letter-spacing: -0.01em; line-height: 1; }
+.headline { margin-top: 8px; font-size: 17px; color: var(--ink-soft); }
+.headline b { color: var(--ink); font-weight: 650; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn {
+  border: 1px solid var(--rule); background: var(--sheet); border-radius: 7px;
+  padding: 7px 12px; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink-soft); }
+.btn.primary { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.btn.danger { color: var(--fault); }
+.btn:disabled { opacity: .45; cursor: default; }
+
+main {
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 0;
+}
+section { padding: 20px 28px; border-bottom: 1px solid var(--rule); min-width: 0; }
+.col-left { border-right: 1px solid var(--rule); }
+h2 { font-stretch: 112%; font-size: 15px; font-weight: 700; margin: 0 0 10px; }
+.hint { color: var(--ink-soft); font-size: 13px; margin: -4px 0 12px; }
+
+/* The ring */
+#ring { width: 100%; height: auto; display: block; max-height: 560px; }
+.node-disc { cursor: pointer; }
+.node-disc:focus-visible { outline: none; }
+.node-disc:focus-visible .disc { stroke: var(--focus); stroke-width: 4; }
+.edge { stroke: var(--rule); stroke-width: 2; }
+.edge.cut { stroke: var(--fault); stroke-dasharray: 3 7; stroke-width: 2; }
+.packet { fill: var(--ink-soft); }
+.badge { paint-order: stroke; stroke: var(--paper); stroke-width: 5px; stroke-linejoin: round; }
+.packet.lead { fill: var(--leader); }
+@keyframes beat { 0% { r: 46; opacity: .55; } 100% { r: 70; opacity: 0; } }
+.pulse { fill: none; stroke: var(--leader); stroke-width: 2; animation: beat 1.2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; opacity: 0; } }
+
+/* Node detail */
+.detail { display: grid; grid-template-columns: auto 1fr; gap: 4px 16px; font-size: 14px; margin-bottom: 14px; }
+.detail dt { color: var(--ink-soft); }
+.detail dd { margin: 0; }
+.node-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Replication */
+.repl-row { display: grid; grid-template-columns: 64px 1fr 150px; gap: 12px; align-items: center; margin: 9px 0; }
+.repl-name { font-weight: 650; }
+.repl-bar { position: relative; height: 18px; background: var(--hatch); border-radius: 4px; overflow: hidden; }
+.repl-bar span { position: absolute; top: 0; bottom: 0; left: 0; }
+.seg-compacted { background: repeating-linear-gradient(135deg, var(--rule) 0 4px, transparent 4px 8px); }
+.seg-applied { background: var(--follower); }
+.seg-commit { background: color-mix(in srgb, var(--follower) 55%, transparent); }
+.seg-tail { background: color-mix(in srgb, var(--candidate) 45%, transparent); }
+.repl-row.is-leader .seg-applied { background: var(--leader); }
+.repl-row.is-leader .seg-commit { background: color-mix(in srgb, var(--leader) 55%, transparent); }
+.repl-nums { font-size: 12.5px; color: var(--ink-soft); text-align: right; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--ink-soft); margin-top: 10px; }
+.key { display: inline-block; width: 11px; height: 11px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+/* Load */
+#chart { width: 100%; height: 150px; display: block; }
+.form { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: end; margin-top: 12px; }
+.form label { display: grid; gap: 3px; font-size: 12.5px; color: var(--ink-soft); }
+.form input, .form select {
+  background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; min-width: 0;
+}
+.form input[type=number] { width: 86px; }
+.stats { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 10px; font-size: 13.5px; color: var(--ink-soft); }
+.stats b { color: var(--ink); font-size: 18px; font-weight: 650; display: block; }
+
+/* Console */
+.console-out { margin-top: 10px; font-size: 13.5px; max-height: 160px; overflow: auto; }
+.console-out div { padding: 4px 0; border-bottom: 1px dashed var(--rule); overflow-wrap: anywhere; }
+.console-out .err { color: var(--fault); }
+
+/* Events */
+.events { max-height: 330px; overflow: auto; font-size: 13.5px; }
+.ev { display: grid; grid-template-columns: 74px 56px 1fr; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--rule); }
+.ev time { color: var(--ink-soft); }
+.ev .who { font-weight: 650; }
+.ev.lab .who { color: var(--fault); }
+
+.empty { color: var(--ink-soft); font-size: 14px; padding: 18px 0; }
+.offline { background: var(--fault); color: #fff; padding: 8px 28px; display: none; }
+
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; }
+  .col-left { border-right: 0; }
+  section, .top { padding-left: 16px; padding-right: 16px; }
+  .repl-row { grid-template-columns: 52px 1fr; }
+  .repl-nums { grid-column: 2; text-align: left; }
+}
+</style>
+</head>
+<body>
+<div class="offline" id="offline">Lost contact with the dashboard process. Is <code>quorum cluster</code> still running?</div>
+<header class="top">
+  <div>
+    <div class="brand">Quorum</div>
+    <div class="headline" id="headline">Connecting to the cluster…</div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btn-split" title="Cut the network into a majority and a minority">Split the network</button>
+    <button class="btn" id="btn-lossy" title="Drop 20% of messages and add 40 ms of delay on every link">Make the network lossy</button>
+    <button class="btn" id="btn-add" title="Start a new node, add it as a learner, then promote it">Add a node</button>
+    <button class="btn primary" id="btn-heal" title="Restore the network, reset clocks, restart dead nodes">Heal everything</button>
+  </div>
+</header>
+
+<main>
+  <div class="col-left">
+    <section>
+      <h2>Cluster</h2>
+      <p class="hint">Dots are Raft messages in flight. A broken red line is a network partition. Select a node to break it.</p>
+      <svg id="ring" viewBox="0 0 640 520" role="img" aria-label="Cluster nodes and the links between them"></svg>
+    </section>
+    <section id="node-panel">
+      <h2 id="node-title">No node selected</h2>
+      <div id="node-body" class="empty">Select a node in the diagram to see its state and to crash, isolate, pause or slow it down.</div>
+    </section>
+    <section>
+      <h2>Events</h2>
+      <div class="events" id="events"><div class="empty">Nothing has happened yet.</div></div>
+    </section>
+  </div>
+
+  <div class="col-right">
+    <section>
+      <h2>Replication</h2>
+      <p class="hint">Each node's log. Entries left of the hatching were compacted into a snapshot.</p>
+      <div id="repl"></div>
+      <div class="legend">
+        <span><i class="key" style="background:var(--follower)"></i>applied</span>
+        <span><i class="key" style="background:color-mix(in srgb, var(--follower) 55%, transparent)"></i>committed, not applied</span>
+        <span><i class="key" style="background:color-mix(in srgb, var(--candidate) 45%, transparent)"></i>not committed yet</span>
+        <span><i class="key seg-compacted"></i>compacted</span>
+      </div>
+    </section>
+    <section>
+      <h2>Load</h2>
+      <svg id="chart" viewBox="0 0 600 150" preserveAspectRatio="none" role="img" aria-label="Operations per second over the last 90 seconds"></svg>
+      <div class="stats" id="load-stats"></div>
+      <div class="form">
+        <label>Clients <input type="number" id="w-clients" value="8" min="1" max="128"></label>
+        <label>Target ops/s <input type="number" id="w-rate" value="300" min="0" step="50"></label>
+        <label>Reads <input type="number" id="w-reads" value="50" min="0" max="100" step="10"></label>
+        <label>Read mode
+          <select id="w-mode">
+            <option value="linearizable">ReadIndex (safe)</option>
+            <option value="lease">Leader lease (fast)</option>
+            <option value="stale">Local replica (stale)</option>
+          </select>
+        </label>
+        <button class="btn primary" id="w-start">Start load</button>
+        <button class="btn" id="w-stop">Stop load</button>
+      </div>
+    </section>
+    <section>
+      <h2>Try a command</h2>
+      <div class="form" style="margin-top:0">
+        <label>Key <input id="kv-key" value="greeting" size="12"></label>
+        <label>Value <input id="kv-value" value="hello" size="12"></label>
+        <label>Read mode
+          <select id="kv-mode">
+            <option value="linearizable">ReadIndex</option>
+            <option value="lease">Lease</option>
+            <option value="stale">Stale</option>
+          </select>
+        </label>
+        <button class="btn" data-op="put">Put</button>
+        <button class="btn" data-op="get">Get</button>
+        <button class="btn" data-op="delete">Delete</button>
+        <button class="btn" data-op="scan" title="List keys that start with the key text">Scan</button>
+      </div>
+      <div class="console-out" id="kv-out"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = (n) => Number(n ?? 0).toLocaleString('en-US');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const NS = 'http://www.w3.org/2000/svg';
+
+let state = null;
+let selected = null;
+let prevSent = new Map();     // "a>b" -> {sent, t}
+const rates = new Map();      // "a>b" -> messages per second
+const packets = [];
+
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : '{}' });
+  if (!r.ok) {
+    let msg = r.statusText;
+    try { msg = (await r.json()).error || msg; } catch { }
+    throw new Error(msg);
+  }
+  return r.headers.get('content-type')?.includes('json') ? r.json() : null;
+}
+function act(btn, fn) {
+  btn.disabled = true;
+  Promise.resolve().then(fn).catch(e => alert(e.message)).finally(() => { btn.disabled = false; });
+}
+
+// ------------------------------------------------------------ stream
+function connect() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = (e) => { $('offline').style.display = 'none'; update(JSON.parse(e.data)); };
+  es.onerror = () => { $('offline').style.display = 'block'; };
+}
+
+function members(s) { return s.nodes.filter(n => !n.removed); }
+function leaderOf(s) {
+  let best = null;
+  for (const n of s.nodes) {
+    const st = n.status;
+    if (st && st.role === 'Leader' && (!best || st.term > best.status.term)) best = n;
+  }
+  return best;
+}
+
+function update(s) {
+  const now = performance.now() / 1000;
+  for (const n of s.nodes) {
+    if (!n.status) {
+      // A node that stopped reporting sends nothing.
+      for (const k of [...rates.keys()]) if (k.startsWith(`${n.id}>`)) rates.delete(k);
+      continue;
+    }
+    const peers = n.status.metrics?.peers || {};
+    for (const [peer, c] of Object.entries(peers)) {
+      const k = `${n.id}>${peer}`;
+      const p = prevSent.get(k);
+      if (p && c.sent >= p.sent && now > p.t) rates.set(k, (c.sent - p.sent) / (now - p.t));
+      prevSent.set(k, { sent: c.sent, t: now });
+    }
+  }
+  state = s;
+  renderHeadline(s);
+  renderRing(s);
+  renderNode(s);
+  renderRepl(s);
+  renderLoad(s);
+  renderEvents(s);
+}
+
+function renderHeadline(s) {
+  const l = leaderOf(s);
+  const m = members(s);
+  const up = m.filter(n => n.running && n.status).length;
+  let text;
+  if (l) {
+    text = `<b>Node ${l.id} leads term ${l.status.term}.</b> ${fmt(l.status.commit)} entries committed, ${up} of ${m.length} nodes up.`;
+  } else if (up === 0) {
+    text = `<b>No node is running.</b> Press “Heal everything” to restart them.`;
+  } else {
+    text = `<b>No leader right now.</b> ${up} of ${m.length} nodes up; an election needs a majority (${Math.floor(m.length / 2) + 1}).`;
+  }
+  $('headline').innerHTML = text;
+}
+
+// ------------------------------------------------------------ ring
+const ring = $('ring');
+const W = 640, H = 520, CX = 320, CY = 255, R = 185;
+function positions(s) {
+  const m = members(s);
+  const pos = new Map();
+  m.forEach((n, i) => {
+    const a = -Math.PI / 2 + (2 * Math.PI * i) / m.length;
+    pos.set(n.id, { x: CX + R * Math.cos(a), y: CY + R * Math.sin(a) });
+  });
+  return pos;
+}
+function blocked(s, a, b) {
+  const na = s.nodes.find(n => n.id === a), nb = s.nodes.find(n => n.id === b);
+  const ba = na?.status?.faults?.blocked || [], bb = nb?.status?.faults?.blocked || [];
+  return ba.includes(b) || bb.includes(a);
+}
+function roleColor(n) {
+  if (!n.running || !n.status) return 'var(--fault)';
+  return { Leader: 'var(--leader)', Candidate: 'var(--candidate)', PreCandidate: 'var(--candidate)' }[n.status.role] || 'var(--follower)';
+}
+function roleText(n) {
+  if (!n.running) return 'down';
+  if (!n.status) return 'starting';
+  const r = n.status.role;
+  if (n.status.removed) return 'removed';
+  const learner = n.status.members?.find(m => m.id === n.id)?.learner;
+  return learner ? 'learner' : r === 'PreCandidate' ? 'pre-vote' : r.toLowerCase();
+}
+
+function renderRing(s) {
+  const pos = positions(s);
+  const m = members(s);
+  let html = '';
+  for (let i = 0; i < m.length; i++) {
+    for (let j = i + 1; j < m.length; j++) {
+      const a = pos.get(m[i].id), b = pos.get(m[j].id);
+      const cut = blocked(s, m[i].id, m[j].id);
+      html += `<line class="edge${cut ? ' cut' : ''}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"/>`;
+    }
+  }
+  html += `<g id="packets"></g>`;
+  for (const n of m) {
+    const p = pos.get(n.id);
+    const st = n.status;
+    const isLeader = st?.role === 'Leader';
+    const badges = [];
+    if (!n.running) badges.push('crashed');
+    if (st && st.clockRate !== 1) badges.push(`clock ${st.clockRate}×`);
+    if (st?.faults?.blocked?.length) badges.push(`cut off from ${st.faults.blocked.join(', ')}`);
+    if (st?.faults?.dropRate > 0) badges.push(`${Math.round(st.faults.dropRate * 100)}% loss`);
+    const sel = selected === n.id;
+    html += `<g class="node-disc" tabindex="0" role="button" aria-label="Node ${n.id}, ${roleText(n)}" data-id="${n.id}" transform="translate(${p.x},${p.y})">
+      ${isLeader && !reduceMotion ? '<circle class="pulse" r="46"/>' : ''}
+      <circle class="disc" r="44" fill="var(--sheet)" stroke="${roleColor(n)}" stroke-width="${isLeader ? 6 : sel ? 4 : 3}" ${!n.running ? 'stroke-dasharray="5 5"' : ''}/>
+      ${sel ? '<circle r="52" fill="none" stroke="var(--ink-soft)" stroke-width="1" stroke-dasharray="2 4"/>' : ''}
+      <text text-anchor="middle" y="-2" font-size="26" font-weight="800" font-stretch="125%" fill="var(--ink)">${n.id}</text>
+      <text text-anchor="middle" y="18" font-size="12" fill="var(--ink-soft)">${esc(roleText(n))}${st ? ' · t' + st.term : ''}</text>
+      ${badges.map((b, i) => `<text class="badge" text-anchor="middle" y="${66 + i * 15}" font-size="12" fill="var(--fault)">${esc(b)}</text>`).join('')}
+    </g>`;
+  }
+  if (m.length === 0) html += `<text x="${CX}" y="${CY}" text-anchor="middle" fill="var(--ink-soft)">No members</text>`;
+  ring.innerHTML = html;
+  ring.querySelectorAll('.node-disc').forEach(g => {
+    const pick = () => { selected = Number(g.dataset.id); renderRing(state); renderNode(state); };
+    g.addEventListener('click', pick);
+    g.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+  });
+}
+
+// Packets: spawned in proportion to the measured message rate on each directed link.
+let lastFrame = performance.now();
+function animate(t) {
+  const dt = Math.min(0.1, (t - lastFrame) / 1000);
+  lastFrame = t;
+  if (state && !reduceMotion) {
+    const pos = positions(state);
+    const leader = leaderOf(state);
+    for (const [k, rate] of rates) {
+      const [a, b] = k.split('>').map(Number);
+      if (!pos.has(a) || !pos.has(b) || blocked(state, a, b)) continue;
+      // Show at most ~6 packets per second per link: enough to read the traffic, not a blizzard.
+      const visible = Math.min(6, rate / 8 + (rate > 0 ? 0.6 : 0));
+      if (Math.random() < visible * dt) packets.push({ a, b, p: 0, lead: leader && a === leader.id });
+    }
+    const g = ring.querySelector('#packets');
+    if (g) {
+      let html = '';
+      for (let i = packets.length - 1; i >= 0; i--) {
+        const k = packets[i];
+        k.p += dt * 1.6;
+        const A = pos.get(k.a), B = pos.get(k.b);
+        if (k.p >= 1 || !A || !B) { packets.splice(i, 1); continue; }
+        const ux = B.x - A.x, uy = B.y - A.y, len = Math.hypot(ux, uy) || 1;
+        // Offset each direction slightly so the two directions do not overlap.
+        const ox = -uy / len * 4, oy = ux / len * 4;
+        const x = A.x + ux * (0.12 + 0.76 * k.p) + ox, y = A.y + uy * (0.12 + 0.76 * k.p) + oy;
+        html += `<circle class="packet${k.lead ? ' lead' : ''}" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.2"/>`;
+      }
+      g.innerHTML = html;
+    }
+  }
+  requestAnimationFrame(animate);
+}
+
+// ------------------------------------------------------------ node panel
+function renderNode(s) {
+  const n = s.nodes.find(x => x.id === selected);
+  if (!n) {
+    $('node-title').textContent = 'No node selected';
+    $('node-body').className = 'empty';
+    $('node-body').innerHTML = 'Select a node in the diagram to see its state and to crash, isolate, pause or slow it down.';
+    return;
+  }
+  const st = n.status;
+  $('node-title').textContent = `Node ${n.id}`;
+  $('node-body').className = '';
+  const rows = [];
+  if (st) {
+    rows.push(['Role', `${roleText(n)} in term ${st.term}${st.leader && st.role !== 'Leader' ? `, following node ${st.leader}` : ''}`]);
+    rows.push(['Log', `entries ${fmt(st.firstIndex)} to ${fmt(st.lastIndex)}, committed ${fmt(st.commit)}, applied ${fmt(st.applied)}`]);
+    rows.push(['Snapshot', st.snapshotIndex ? `at entry ${fmt(st.snapshotIndex)}` : 'none yet']);
+    rows.push(['Data', `${fmt(st.storage.keys)} keys in Tessera (B+tree height ${st.storage.treeHeight}), ${fmt(st.storage.sessions)} client sessions`]);
+    rows.push(['Disk', `${fmt(st.metrics.fsyncs)} fsyncs, ${st.metrics.fsyncAvgMs} ms on average`]);
+    if (st.role === 'Leader') rows.push(['Lease', st.leaseValid ? 'held (lease reads are served locally)' : 'not held']);
+    rows.push(['Clock', `${st.clockRate}× real time`]);
+  } else {
+    rows.push(['State', n.running ? 'starting…' : 'process is not running']);
+  }
+  rows.push(['Address', `${esc(n.grpc)} (gRPC), ${esc(n.http)}/status`]);
+  if (n.restarts) rows.push(['Restarts', n.restarts]);
+  const isLeader = st?.role === 'Leader';
+  const slow = st && st.clockRate !== 1;
+  $('node-body').innerHTML = `<dl class="detail">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>
+    <div class="node-actions">
+      ${n.running ? `<button class="btn danger" data-a="kill">Crash (kill -9)</button>` : `<button class="btn primary" data-a="restart">Start again</button>`}
+      ${n.running ? `<button class="btn" data-a="restart">Restart</button>` : ''}
+      <button class="btn" data-a="isolate" ${!n.running ? 'disabled' : ''}>Cut off from the others</button>
+      <button class="btn" data-a="pause" ${!n.running ? 'disabled' : ''} title="Freeze the node for 3 seconds, like a long GC pause">Freeze for 3 s</button>
+      <button class="btn" data-a="${slow ? 'clock1' : 'clockSlow'}" ${!n.running ? 'disabled' : ''}>${slow ? 'Reset its clock' : 'Slow its clock to 0.1×'}</button>
+      <button class="btn" data-a="lead" ${!n.running || isLeader ? 'disabled' : ''}>Make it the leader</button>
+      <button class="btn danger" data-a="remove" ${n.removed ? 'disabled' : ''}>Remove from cluster</button>
+    </div>`;
+  $('node-body').querySelectorAll('[data-a]').forEach(b => b.addEventListener('click', () => act(b, async () => {
+    const id = n.id, a = b.dataset.a;
+    if (a === 'remove' && !confirm(`Remove node ${id} from the cluster? It will be stopped and its id retired.`)) return;
+    const url = {
+      kill: `/api/nodes/${id}/kill`, restart: `/api/nodes/${id}/restart`, isolate: `/api/nodes/${id}/isolate`,
+      pause: `/api/nodes/${id}/pause?ms=3000`, clockSlow: `/api/nodes/${id}/clock?rate=0.1`, clock1: `/api/nodes/${id}/clock?rate=1`,
+      lead: `/api/nodes/${id}/lead`, remove: `/api/nodes/${id}/remove`,
+    }[a];
+    await post(url);
+  })));
+}
+
+// ------------------------------------------------------------ replication
+function renderRepl(s) {
+  const m = members(s).filter(n => n.status);
+  if (m.length === 0) { $('repl').innerHTML = '<div class="empty">No node is reporting.</div>'; return; }
+  const max = Math.max(1, ...m.map(n => n.status.lastIndex));
+  const pct = (v) => (100 * v / max).toFixed(3) + '%';
+  $('repl').innerHTML = members(s).map(n => {
+    const st = n.status;
+    if (!st) return `<div class="repl-row"><div class="repl-name">node ${n.id}</div><div class="repl-bar"></div><div class="repl-nums">${n.running ? 'starting' : 'down'}</div></div>`;
+    const compacted = Math.max(0, st.firstIndex - 1);
+    return `<div class="repl-row${st.role === 'Leader' ? ' is-leader' : ''}">
+      <div class="repl-name">node ${n.id}</div>
+      <div class="repl-bar" title="last ${st.lastIndex}, committed ${st.commit}, applied ${st.applied}, compacted up to ${compacted}">
+        <span class="seg-tail" style="width:${pct(st.lastIndex)}"></span>
+        <span class="seg-commit" style="width:${pct(st.commit)}"></span>
+        <span class="seg-applied" style="width:${pct(st.applied)}"></span>
+        <span class="seg-compacted" style="width:${pct(compacted)}"></span>
+      </div>
+      <div class="repl-nums">${fmt(st.applied)} / ${fmt(st.lastIndex)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ------------------------------------------------------------ load
+function renderLoad(s) {
+  const w = s.workload;
+  const svg = $('chart');
+  const secs = w?.seconds || [];
+  if (!secs.length) {
+    svg.innerHTML = `<text x="300" y="80" text-anchor="middle" fill="var(--ink-soft)" font-size="14">Start some load to see throughput here.</text>`;
+  } else {
+    const n = 90, bw = 600 / n;
+    const maxOps = Math.max(10, ...secs.map(x => x[1] + x[2] + x[3]));
+    const maxLat = Math.max(5, ...secs.map(x => x[5]));
+    const start = secs.length < n ? n - secs.length : 0;
+    let html = '';
+    secs.slice(-n).forEach((x, i) => {
+      const [, ok, failed, unknown] = x;
+      let y = 140;
+      const bar = (v, c) => { if (!v) return ''; const h = v / maxOps * 128; y -= h; return `<rect x="${(start + i) * bw}" y="${y}" width="${bw - 1}" height="${h}" fill="${c}"/>`; };
+      html += bar(ok, 'var(--follower)') + bar(failed, 'var(--fault)') + bar(unknown, 'var(--candidate)');
+    });
+    const pts = secs.slice(-n).map((x, i) => `${((start + i) * bw + bw / 2).toFixed(1)},${(140 - x[5] / maxLat * 128).toFixed(1)}`).join(' ');
+    html += `<polyline points="${pts}" fill="none" stroke="var(--leader)" stroke-width="2" vector-effect="non-scaling-stroke"/>`;
+    html += `<line x1="0" y1="140.5" x2="600" y2="140.5" stroke="var(--rule)"/>`;
+    svg.innerHTML = html;
+  }
+  const last = secs.slice(-5);
+  const avg = last.length ? last.reduce((a, x) => a + x[1], 0) / last.length : 0;
+  const p99 = last.length ? Math.max(...last.map(x => x[5])) : 0;
+  $('load-stats').innerHTML = w ? `
+    <div><b>${fmt(Math.round(avg))}</b>ops/s now</div>
+    <div><b>${p99.toFixed(1)} ms</b>p99 latency <span style="color:var(--leader)">(line)</span></div>
+    <div><b>${fmt(w.ok)}</b>succeeded</div>
+    <div><b>${fmt(w.unknown)}</b>outcome unknown</div>
+    <div><b>${w.running ? esc(w.options.consistency) : 'stopped'}</b>${w.running ? 'reads' : 'load'}</div>`
+    : '<div>No load running. Bars show completed operations per second; the line is p99 latency.</div>';
+}
+$('w-start').addEventListener('click', (e) => act(e.target, () => post('/api/workload/start', {
+  clients: +$('w-clients').value, rate: +$('w-rate').value, readRatio: +$('w-reads').value / 100, consistency: $('w-mode').value, keys: 16,
+})));
+$('w-stop').addEventListener('click', (e) => act(e.target, () => post('/api/workload/stop')));
+
+// ------------------------------------------------------------ console
+document.querySelectorAll('[data-op]').forEach(b => b.addEventListener('click', () => act(b, async () => {
+  const op = b.dataset.op, key = $('kv-key').value, value = $('kv-value').value;
+  const r = await post('/api/kv', { op, key, value, consistency: $('kv-mode').value });
+  const out = $('kv-out');
+  const line = document.createElement('div');
+  if (r.status === 'Error') {
+    line.className = 'err';
+    line.textContent = `${op} ${key}: ${r.error}`;
+  } else if (op === 'scan') {
+    line.textContent = `scan ${key}: ${r.pairs.length ? r.pairs.map(p => `${p.key} = ${p.value}`).join(', ') : 'no keys'} (${r.ms} ms)`;
+  } else if (op === 'get') {
+    line.textContent = `get ${key}: ${r.found ? `“${r.value}”` : 'not found'}, from node ${r.node} at index ${r.index} (${r.ms} ms)`;
+  } else {
+    line.textContent = `${op} ${key}: ${r.status === 'Ok' ? 'done' : r.status} at index ${r.index}, leader node ${r.node} (${r.ms} ms)`;
+  }
+  out.prepend(line);
+})));
+
+// ------------------------------------------------------------ events
+let lastEventsKey = '';
+function renderEvents(s) {
+  const evs = s.events || [];
+  const key = evs.length + ':' + (evs[evs.length - 1]?.time || '');
+  if (key === lastEventsKey) return;
+  lastEventsKey = key;
+  if (!evs.length) return;
+  $('events').innerHTML = evs.slice().reverse().map(e => {
+    const t = new Date(e.time);
+    const time = t.toLocaleTimeString('en-GB', { hour12: false }) + '.' + String(t.getMilliseconds()).padStart(3, '0').slice(0, 1);
+    return `<div class="ev${e.node === 0 ? ' lab' : ''}"><time>${time}</time><span class="who">${e.node === 0 ? 'you' : 'node ' + e.node}</span><span>${esc(e.text)}</span></div>`;
+  }).join('');
+}
+
+// ------------------------------------------------------------ header actions
+$('btn-heal').addEventListener('click', (e) => act(e.target, () => post('/api/heal')));
+$('btn-split').addEventListener('click', (e) => act(e.target, () => post('/api/partition/random')));
+$('btn-lossy').addEventListener('click', (e) => act(e.target, () => post('/api/network', { drop: 0.2, delay: 40 })));
+$('btn-add').addEventListener('click', (e) => act(e.target, () => post('/api/members/add')));
+
+connect();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

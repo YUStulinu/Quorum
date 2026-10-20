@@ -1,0 +1,24 @@
+LIBRARY tessera
+EXPORTS
+    ts_errstr
+    ts_options_default
+    ts_open
+    ts_close
+    ts_begin
+    ts_commit
+    ts_rollback
+    ts_in_transaction
+    ts_put
+    ts_get
+    ts_delete
+    ts_free
+    ts_iter_open
+    ts_iter_next
+    ts_iter_key
+    ts_iter_value
+    ts_iter_close
+    ts_checkpoint
+    ts_get_stats
+    ts_check
+    ts_memvfs_create
+    ts_memvfs_destroy

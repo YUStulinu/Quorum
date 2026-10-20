@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      # Builds Tessera (C) first: MSVC on Windows, cc on Linux.
+      - name: Build
+        run: dotnet build Quorum.sln -c Release -nologo
+
+      - name: Unit, simulation and integration tests
+        run: dotnet test Quorum.sln -c Release --no-build -nologo
+
+      - name: Chaos test (3 nodes, 20 s, all faults)
+        run: dotnet run --project src/Quorum.Cli -c Release --no-build -- chaos --nodes 3 --time 20 --interval 4 --seed 1 --out chaos-results
+
+      - name: Upload the chaos report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-report-${{ matrix.os }}
+          path: chaos-results/**/report.html
+          if-no-files-found: ignore
